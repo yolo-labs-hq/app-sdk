@@ -1,0 +1,57 @@
+<!doctype html>
+<!--
+  Minimal YOLO App — a single static HTML file, framework-free, the kind of
+  surface a YOLO App actually ships. It runs inside the host's sandboxed,
+  cross-origin iframe; its only channel to the host is the @yololabs/app-sdk
+  bridge. This file is illustrative — it doesn't need to run against a real host.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Minimal YOLO App</title>
+</head>
+<body>
+  <h1>Minimal YOLO App</h1>
+  <p id="status">Calling host…</p>
+  <button id="grant-btn">Request elevenlabs access</button>
+  <pre id="log"></pre>
+
+  <script type="module">
+    // Import as an ES module. In a real app this resolves from your bundler;
+    // shown here as the bare package specifier you'd `npm i @yololabs/app-sdk`.
+    import { createTileApp } from '@yololabs/app-sdk';
+
+    const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+    // Create the bridge client. It pins the host origin (from ancestorOrigins/referrer)
+    // and drops any reply from another origin — you never post to '*'.
+    const app = createTileApp();
+
+    // One capability call. The host attaches your user token server-side and
+    // forwards to the Capability Broker; you only ever see the broker's reply.
+    const res = await app.call('media', 'upload', { name: 'clip.mp4' }, { timeoutMs: 30_000 });
+    document.getElementById('status').textContent =
+      res.ok ? 'Upload OK' : `Refused: ${res.reason} — ${res.message}`;
+
+    // Subscribe to a host → app event. Returns an unsubscribe fn (unused here).
+    app.on('env-profile-applied', (e) => {
+      log(`env-profile applied: ${e.profileName} (${(e.envVarKeys || []).join(', ')})`);
+    });
+
+    // Request a runtime permission the user hasn't granted yet. It must be
+    // declared in this app's manifest `optional` set, or the host rejects it.
+    document.getElementById('grant-btn').addEventListener('click', async () => {
+      try {
+        const grant = await app.requestPermissions(['net:api.elevenlabs.io']);
+        log(`granted: ${grant.newlyGranted.join(', ') || '(already granted)'}`);
+      } catch (err) {
+        // err.reason: 'user-declined' | 'invalid-args' | 'timeout' | 'busy'
+        log(`permission denied: ${err.reason}`);
+      }
+    });
+
+    // On teardown: drop the message listener and reject in-flight calls.
+    window.addEventListener('pagehide', () => app.destroy());
+  </script>
+</body>
+</html>

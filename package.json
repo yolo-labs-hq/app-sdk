@@ -1,0 +1,64 @@
+{
+  "name": "@yololabs/app-sdk",
+  "version": "0.8.0",
+  "description": "Client SDK for YOLO Apps — the typed, origin-safe bridge an app's iframe code uses to talk to the YOLO host (replaces hand-rolled postMessage). The ONLY package a third-party app installs.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yolo-labs-hq/app-sdk.git"
+  },
+  "homepage": "https://github.com/yolo-labs-hq/app-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/yolo-labs-hq/app-sdk/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "test": "vitest --run",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "yolo",
+    "tile-app",
+    "sdk",
+    "iframe",
+    "bridge",
+    "react"
+  ],
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.4",
+    "jsdom": "^25.0.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@types/react": "^19.1.0",
+    "@testing-library/react": "^16.1.0"
+  }
+}
