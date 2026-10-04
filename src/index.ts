@@ -1,5 +1,5 @@
 /**
- * @yololabs/app-sdk — the client SDK for YOLO Apps.
+ * @yolo-labs/app-sdk — the client SDK for YOLO Apps.
  *
  * Import this from your app's IN-IFRAME code to talk to the YOLO host over the
  * origin-safe postMessage bridge. See the README.

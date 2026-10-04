@@ -1,4 +1,4 @@
-# @yololabs/app-sdk
+# @yolo-labs/app-sdk
 
 The client SDK a **YOLO App** imports to talk to the YOLO host.
 
@@ -37,23 +37,19 @@ default instead of a footgun.
 
 ## 2. Install
 
-> **Not on npm yet.** Until `@yololabs/app-sdk` is published, build it from this
-> repo and vendor the output. It is zero-dependency ESM (React is an optional peer
-> dependency, only for `@yololabs/app-sdk/react`):
->
-> ```bash
-> npm install
-> npm run build   # emits dist/index.js (+ dist/react.js and .d.ts types)
-> ```
->
-> Copy `dist/` into your app and import it by path, or map the bare specifier to
-> it with your bundler or an import map. `examples/minimal-app.html` is a
-> minimal framework-free app that imports it by that bare name.
+```bash
+npm i @yolo-labs/app-sdk
+```
+
+It is zero-dependency ESM. React is an optional peer dependency, needed only for
+`@yolo-labs/app-sdk/react`. With no bundler, copy the package's `dist/` next to
+your page and import it by path, or map the bare specifier with an import map.
+`examples/minimal-app.html` is a minimal framework-free app.
 
 Quick start:
 
 ```ts
-import { createTileApp } from '@yololabs/app-sdk';
+import { createTileApp } from '@yolo-labs/app-sdk';
 
 const app = createTileApp();
 
@@ -76,7 +72,7 @@ const off = app.on('env-profile-applied', (e) => {
 ## 3. The bridge client
 
 ```ts
-import { createTileApp } from '@yololabs/app-sdk';
+import { createTileApp } from '@yolo-labs/app-sdk';
 
 const app = createTileApp({
   defaultTimeoutMs: 30_000, // optional; per-call override via call(... , { timeoutMs })
@@ -201,13 +197,13 @@ You never handle the user token, and you never post to a wildcard target.
 
 ### React bindings (optional)
 
-If your app is React, import the thin hooks from the **`@yololabs/app-sdk/react`**
+If your app is React, import the thin hooks from the **`@yolo-labs/app-sdk/react`**
 subpath. React is an **optional peer dependency** — the core package never
 imports it, so vanilla-HTML apps pay nothing, and the subpath is tree-shaken
 away unless you import it.
 
 ```ts
-import { useTileApp, useTileAppEvent, useTileAppCall, useRequestPermissions } from '@yololabs/app-sdk/react';
+import { useTileApp, useTileAppEvent, useTileAppCall, useRequestPermissions } from '@yolo-labs/app-sdk/react';
 
 function Stitcher() {
   const app = useTileApp();                       // one client, destroyed on unmount
@@ -244,7 +240,7 @@ Your app ships a manifest (`tileapp.json`) declaring
 `permissions` block with `required[]` and `optional[]`.
 
 ```ts
-import { validateManifest, KNOWN_PERMISSIONS } from '@yololabs/app-sdk';
+import { validateManifest, KNOWN_PERMISSIONS } from '@yolo-labs/app-sdk';
 
 const v = validateManifest(json);
 if (v.ok) {
@@ -308,7 +304,7 @@ expected to stay there.)
 
 **Phase 1** — the bridge client (`createTileApp` → `call` / `on` /
 `requestPermissions` / `destroy`) plus manifest types and `validateManifest` /
-`KNOWN_PERMISSIONS`, and the optional **`@yololabs/app-sdk/react`** hooks.
+`KNOWN_PERMISSIONS`, and the optional **`@yolo-labs/app-sdk/react`** hooks.
 
 **0.6.0** adds typed `llmInvoke` / `llmDiscover` helpers and the `Llm*` arg/payload
 types (additive — `call()` is unchanged).

@@ -539,10 +539,10 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
   function post(env: OutboundEnvelope): void {
     const parent = typeof window !== 'undefined' ? window.parent : undefined;
     if (!parent || parent === window) {
-      throw new Error('@yololabs/app-sdk: no host window — not running inside a YOLO tile');
+      throw new Error('@yolo-labs/app-sdk: no host window — not running inside a YOLO tile');
     }
     if (hostOrigin === null) {
-      throw new Error('@yololabs/app-sdk: host origin unknown — cannot target a message safely (no document.referrer and no host message yet; pass { hostOrigin })');
+      throw new Error('@yolo-labs/app-sdk: host origin unknown — cannot target a message safely (no document.referrer and no host message yet; pass { hostOrigin })');
     }
     // Pinned origin, never '*'.
     parent.postMessage(env, hostOrigin);
@@ -550,7 +550,7 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
 
   function send(env: OutboundEnvelope, timeoutMs: number): Promise<BridgeReplyEnvelope> {
     return new Promise<BridgeReplyEnvelope>((resolve, reject) => {
-      if (destroyed) { reject(new Error('@yololabs/app-sdk: client destroyed')); return; }
+      if (destroyed) { reject(new Error('@yolo-labs/app-sdk: client destroyed')); return; }
       const timer = setTimeout(() => {
         settle(env.id, (p) => p.reject(new TimeoutError(env.kind, timeoutMs)));
       }, timeoutMs);
@@ -646,7 +646,7 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
         opts?.timeoutMs ?? defaultTimeoutMs,
       );
       if (reply.ok !== true) {
-        throw new Error(`@yololabs/app-sdk: context request failed: ${reply.message ?? reply.reason ?? reply.error ?? 'unknown'}`);
+        throw new Error(`@yolo-labs/app-sdk: context request failed: ${reply.message ?? reply.reason ?? reply.error ?? 'unknown'}`);
       }
       const p = (reply.payload ?? {}) as Partial<TileAppContext>;
       cachedContext = {
@@ -698,7 +698,7 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
       window.removeEventListener('message', onMessage);
       for (const p of pending.values()) {
         clearTimeout(p.timer);
-        p.reject(new Error('@yololabs/app-sdk: client destroyed'));
+        p.reject(new Error('@yolo-labs/app-sdk: client destroyed'));
       }
       pending.clear();
       eventHandlers.clear();
@@ -710,7 +710,7 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
 
 class TimeoutError extends Error {
   constructor(kind: string, timeoutMs: number) {
-    super(`@yololabs/app-sdk: ${kind} timed out after ${timeoutMs}ms`);
+    super(`@yolo-labs/app-sdk: ${kind} timed out after ${timeoutMs}ms`);
     this.name = 'TimeoutError';
   }
 }

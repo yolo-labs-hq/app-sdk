@@ -1,5 +1,5 @@
 {
-  "name": "@yololabs/app-sdk",
+  "name": "@yolo-labs/app-sdk",
   "version": "0.8.0",
   "description": "Client SDK for YOLO Apps — the typed, origin-safe bridge an app's iframe code uses to talk to the YOLO host (replaces hand-rolled postMessage). The ONLY package a third-party app installs.",
   "license": "MIT",
@@ -10,6 +10,9 @@
   "homepage": "https://github.com/yolo-labs-hq/app-sdk#readme",
   "bugs": {
     "url": "https://github.com/yolo-labs-hq/app-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "type": "module",
   "main": "./dist/index.js",

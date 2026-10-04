@@ -2,7 +2,7 @@
 <!--
   Minimal YOLO App — a single static HTML file, framework-free, the kind of
   surface a YOLO App actually ships. It runs inside the host's sandboxed,
-  cross-origin iframe; its only channel to the host is the @yololabs/app-sdk
+  cross-origin iframe; its only channel to the host is the @yolo-labs/app-sdk
   bridge. This file is illustrative — it doesn't need to run against a real host.
 -->
 <html lang="en">
@@ -18,8 +18,8 @@
 
   <script type="module">
     // Import as an ES module. In a real app this resolves from your bundler;
-    // shown here as the bare package specifier you'd `npm i @yololabs/app-sdk`.
-    import { createTileApp } from '@yololabs/app-sdk';
+    // shown here as the bare package specifier you'd `npm i @yolo-labs/app-sdk`.
+    import { createTileApp } from '@yolo-labs/app-sdk';
 
     const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
 

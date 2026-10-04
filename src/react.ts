@@ -1,9 +1,9 @@
 /**
- * @yololabs/app-sdk/react — OPTIONAL React bindings for the bridge client.
+ * @yolo-labs/app-sdk/react — OPTIONAL React bindings for the bridge client.
  *
  * Thin, tree-shakeable hooks over the vanilla {@link createTileApp} client.
  * Importing THIS subpath is the only thing that pulls React in; the core
- * (`@yololabs/app-sdk`) never imports React, so a vanilla-HTML app (like
+ * (`@yolo-labs/app-sdk`) never imports React, so a vanilla-HTML app (like
  * videostitcher) pays nothing for these. React is an OPTIONAL peer dependency —
  * you already have it if you reach for this entry point.
  *
@@ -122,7 +122,7 @@ export function useTileAppCall(app: TileApp | null | undefined): UseTileAppCall 
 
   const call = useCallback(
     async (capability: string, method: string, args?: unknown, opts?: TileAppCallOptions): Promise<TileAppCallResult> => {
-      if (!app) throw new Error('@yololabs/app-sdk/react: TileApp not ready yet');
+      if (!app) throw new Error('@yolo-labs/app-sdk/react: TileApp not ready yet');
       inflight.current += 1;
       if (mounted.current) setPending(true);
       try {
@@ -182,7 +182,7 @@ export function useRequestPermissions(app: TileApp | null | undefined): UseReque
 
   const request = useCallback(
     async (permissions: string[]): Promise<PermissionGrant> => {
-      if (!app) throw new Error('@yololabs/app-sdk/react: TileApp not ready yet');
+      if (!app) throw new Error('@yolo-labs/app-sdk/react: TileApp not ready yet');
       inflight.current += 1;
       if (mounted.current) setPending(true);
       try {
