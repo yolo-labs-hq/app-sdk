@@ -1,0 +1,72 @@
+{
+  "kind": "app-mcp-sdk-final-body-deadline-correction",
+  "inputCommit": "0f8ba5b505a3d2fd5278eba0185fbf4f2ff6eae7",
+  "findingOwner": "root ordinary source review; missing remaining(deadline) after await res.json()",
+  "inputSha256": {
+    "packages/app-sdk/src/mcp.ts": "51b8b33d3b07af8fcc85dc0a0372609eb54d9de3fa972639b7b72e72e387b19f",
+    "packages/app-sdk/src/mcp.test.ts": "5229b0c411359b8ca12aca7941a03df99d5ec7fdcadd74aff7b74359c68ce00b",
+    "docs/APP_MCP_SDK_B.md": "99f22b79fc7a9769b348714fef275fb9e7243caa699dfe2fdb558bef3ee92c9b"
+  },
+  "verification": {
+    "baseline": {
+      "argv": [
+        "timeout",
+        "120s",
+        "./node_modules/.bin/vitest",
+        "run",
+        "src/mcp.test.ts",
+        "--maxWorkers=1",
+        "--no-file-parallelism"
+      ],
+      "start": "2026-10-23T02:00:54.537791+00:00",
+      "end": "2026-10-23T02:00:54.989953+00:00",
+      "exit": 1
+    },
+    "mcp": {
+      "argv": [
+        "timeout",
+        "120s",
+        "./node_modules/.bin/vitest",
+        "run",
+        "src/mcp.test.ts",
+        "--maxWorkers=1",
+        "--no-file-parallelism"
+      ],
+      "start": "2026-10-23T02:01:03.954574+00:00",
+      "end": "2026-10-23T02:01:04.399135+00:00",
+      "exit": 0
+    },
+    "compiler": {
+      "argv": [
+        "timeout",
+        "120s",
+        "./node_modules/.bin/tsc",
+        "-p",
+        "tsconfig.json",
+        "--noEmit"
+      ],
+      "start": "2026-10-23T02:01:04.399734+00:00",
+      "end": "2026-10-23T02:01:04.963159+00:00",
+      "exit": 0
+    }
+  },
+  "baseline": {
+    "productionSource": "0f8ba5b505a3d2fd5278eba0185fbf4f2ff6eae7",
+    "testOverlay": "current25-case file",
+    "passed": 24,
+    "failed": 1,
+    "observation": "response returned lateSuccess rather than timeout"
+  },
+  "corrected": {
+    "mcpPassed": 25,
+    "mcpFailed": 0,
+    "compilerExit": 0
+  },
+  "nonTestInvocationError": "Initial Vitest invocation used unsupported --minWorkers and exited before tests; corrected command is recorded in verification. Initial append targeted a nonexistent relative path and wrote nothing.",
+  "history": "Prior SDK receipts and named reviews remain unchanged. This correction requires its own scoped review.",
+  "boundaries": [
+    "Synthetic response body only; no network or live auth.",
+    "Absolute check at final asynchronous body boundary; no hard CPU deadline/body cancellation claim.",
+    "No product authority, package publication or all-paths-token-free claim."
+  ]
+}

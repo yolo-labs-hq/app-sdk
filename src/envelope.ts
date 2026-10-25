@@ -99,7 +99,24 @@ export function isDockPreviewRequest(v: unknown): v is { __tileapp: true; kind: 
   const m = v as Record<string, unknown>;
   return m.__tileapp === true && m.kind === 'dock-preview-request';
 }
-export type OutboundEnvelope = { __tileapp: true; kind: 'title-bar-status'; id: string; text: string | null } | { __tileapp: true; kind: 'dock-pulse'; id: string } | DockPreviewEnvelope | ZenRequestEnvelope | BridgeCallEnvelope | RequestPermissionsEnvelope | ContextRequestEnvelope;
+/** Host → iframe after the frame reloads: "are you still the app I launched?"
+ *  The host targets it at the launch-time origin, so only a document still on
+ *  that origin receives it; the SDK echoes the nonce in `host-hello-ack`. A host
+ *  that never sends it simply never gets an ack. Additive kind (card C10). */
+export function isHostHello(v: unknown): v is { __tileapp: true; kind: 'host-hello'; nonce: string } {
+  if (!v || typeof v !== 'object') return false;
+  const m = v as Record<string, unknown>;
+  return m.__tileapp === true && m.kind === 'host-hello' && typeof m.nonce === 'string';
+}
+export interface HostHelloAckEnvelope {
+  __tileapp: true;
+  kind: 'host-hello-ack';
+  nonce: string;
+}
+/** iframe → host envelopes that expect a correlated `bridge-reply` (carry `id`). */
+export type OutboundRequestEnvelope = { __tileapp: true; kind: 'title-bar-status'; id: string; text: string | null } | { __tileapp: true; kind: 'dock-pulse'; id: string } | DockPreviewEnvelope | ZenRequestEnvelope | BridgeCallEnvelope | RequestPermissionsEnvelope | ContextRequestEnvelope;
+/** Everything the SDK may post: correlated requests plus fire-and-forget acks. */
+export type OutboundEnvelope = OutboundRequestEnvelope | HostHelloAckEnvelope;
 
 // ── host → iframe (SDK receives) ────────────────────────────────────────────
 
@@ -120,6 +137,11 @@ export interface BridgeReplyEnvelope {
   message?: string;
   /** The API's error field on pre-broker failures (no structured `ok`). */
   error?: string;
+  status?: number;
+  code?: string | null;
+  retryAfter?: number | null;
+  retryAfterSeconds?: number;
+  permission?: string;
 }
 
 /** Fired by the host after a new env-profile is applied to the session, so the

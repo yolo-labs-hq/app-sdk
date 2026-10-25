@@ -49,6 +49,19 @@ it('publishes constrained title status and returns host pulse throttling', async
   app.destroy();
 });
 
+it('acks the host post-reload hello to the pinned origin only', () => {
+  const app = createTileApp();
+  postSpy.mockClear();
+  const hello = { __tileapp: true, kind: 'host-hello', nonce: 'n-1' };
+  hostSends(hello, 'https://evil.test'); nonParentSends(hello);
+  expect(postSpy).not.toHaveBeenCalled();
+  hostSends(hello);
+  expect(lastPosted()).toEqual({ env: { __tileapp: true, kind: 'host-hello-ack', nonce: 'n-1' }, targetOrigin: HOST });
+  hostSends({ __tileapp: true, kind: 'host-hello' });
+  expect(postSpy).toHaveBeenCalledTimes(1);
+  app.destroy();
+});
+
 it('publishes dock content and only accepts dock actions from the pinned parent', async () => {
   const app = createTileApp();
   const handler = vi.fn();
@@ -352,6 +365,31 @@ describe('tile-app notifications', () => {
   });
 });
 
+describe('mcp.call', () => {
+  it('posts mcp.call and surfaces the MCP route status, code and Retry-After', async () => {
+    const app = createTileApp();
+    const args = { scopes: ['studio.kanban_get_board'], path: '/kanban/board/get', method: 'POST' as const, body: { tileId: 't1' } };
+    const ok = app.mcpCall<{ cards: unknown[] }>(args);
+    let { env, targetOrigin } = lastPosted();
+    expect(targetOrigin).toBe(HOST);
+    expect(env).toMatchObject({ kind: 'bridge-call', capability: 'mcp', method: 'call', args });
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: env.id, ok: true, status: 200, payload: { cards: [] } });
+    await expect(ok).resolves.toStrictEqual({ ok: true, status: 200, payload: { cards: [] }, reason: undefined, message: undefined, code: undefined, retryAfter: undefined, permission: undefined });
+
+    const limited = app.mcpCall(args);
+    ({ env } = lastPosted());
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: env.id, ok: false, reason: 'upstream-status', status: 429, code: 'RATE_LIMITED', message: 'slow down', retryAfter: 12 });
+    await expect(limited).resolves.toStrictEqual({ ok: false, payload: undefined, reason: 'upstream-status', message: 'slow down', status: 429, code: 'RATE_LIMITED', retryAfter: 12, permission: undefined });
+
+    // The broker's own limiter answers before any route, naming its hint retryAfterSeconds.
+    const brokerLimited = app.mcpCall(args);
+    ({ env } = lastPosted());
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: env.id, ok: false, reason: 'rate-limited', message: 'too many broker calls', retryAfterSeconds: 20 });
+    await expect(brokerLimited).resolves.toStrictEqual({ ok: false, payload: undefined, reason: 'rate-limited', message: 'too many broker calls', retryAfter: 20, status: undefined, code: undefined, permission: undefined });
+    app.destroy();
+  });
+});
+
 describe('workspace Zen Mode', () => {
   it('posts host-local enter/exit requests and returns host errors', async () => {
     const app = createTileApp();
@@ -385,4 +423,131 @@ describe('workspace Zen Mode', () => {
     expect(states).toEqual([true, false]);
     app.destroy();
   });
+});
+
+describe('link.open (card C7)', () => {
+  it('app.openLink posts link.open on the pinned bridge and returns the host reply', async () => {
+    const app = createTileApp();
+    const opened = app.openLink('https://github.com/org/repo');
+    let { env, targetOrigin } = lastPosted();
+    expect(targetOrigin).toBe(HOST);
+    expect(env).toMatchObject({ kind: 'bridge-call', capability: 'link', method: 'open', args: { url: 'https://github.com/org/repo' } });
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: env.id, ok: true, payload: { opened: true, host: 'github.com' } });
+    await expect(opened).resolves.toMatchObject({ ok: true, payload: { opened: true, host: 'github.com' } });
+
+    const refused = app.openLink('https://evil.test/');
+    ({ env } = lastPosted());
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: env.id, ok: false, reason: 'link-not-declared', message: 'not declared' });
+    await expect(refused).resolves.toMatchObject({ ok: false, reason: 'link-not-declared' });
+    app.destroy();
+  });
+});
+
+// P1.2: capability discovery, additive. A host without it answers unknown-capability → null.
+describe('createTileApp — capabilities', () => {
+  const CONTRACT = {
+    version: 'tileapp-capabilities/v1', placement: 'worker',
+    decisions: [{ permission: 'llm.invoke', family: 'llm', required: true, granted: true, state: 'enforced', enforcement: { by: 'broker', capability: 'llm' }, surfaces: { ui: true, backend: true } }],
+    implicit: [], ambient: { navigation: 'n', isolation: null, podLoopback: null },
+  };
+
+  it('asks capabilities.get through the bridge and resolves the contract', async () => {
+    const app = createTileApp();
+    const p = app.capabilities();
+    const { env } = lastPosted();
+    expect([env.kind, env.capability, env.method]).toEqual(['bridge-call', 'capabilities', 'get']);
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: env.id, ok: true, payload: CONTRACT });
+    expect(await p).toEqual(CONTRACT);
+    app.destroy();
+  });
+
+  it.each(['unknown-capability', 'unknown-method'])('resolves null on a host without discovery (%s)', async (reason) => {
+    const app = createTileApp();
+    const p = app.capabilities();
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: lastPosted().env.id, ok: false, reason, message: 'no' });
+    expect(await p).toBeNull();
+    app.destroy();
+  });
+
+  it('throws on any other refusal', async () => {
+    const app = createTileApp();
+    const p = app.capabilities();
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: lastPosted().env.id, ok: false, reason: 'app-not-installed', message: 'not installed' });
+    await expect(p).rejects.toThrow(/not installed/);
+    app.destroy();
+  });
+});
+
+// P1.3: the UI call takes a signal too; cancelling rejects CancelledError.
+describe('createTileApp — cancellation', () => {
+  it('a cancelled signal rejects CancelledError and drops the pending call', async () => {
+    const { CancelledError } = await import('./client.js');
+    const app = createTileApp();
+    const ac = new AbortController();
+    const p = app.call('llm', 'invoke', {}, { signal: ac.signal });
+    const { env } = lastPosted();
+    ac.abort();
+    await expect(p).rejects.toBeInstanceOf(CancelledError);
+    // A late reply for it is ignored.
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: env.id, ok: true, payload: 1 });
+    await expect(app.call('llm', 'invoke', {}, { signal: ac.signal })).rejects.toBeInstanceOf(CancelledError);
+    app.destroy();
+  });
+});
+
+describe('createTileApp — signal listeners and missing host (P1.3 review)', () => {
+  it('a settled call removes its abort listener from a long-lived signal', async () => {
+    const app = createTileApp();
+    const ac = new AbortController();
+    const remove = vi.spyOn(ac.signal, 'removeEventListener');
+    const p = app.call('llm', 'invoke', {}, { signal: ac.signal });
+    hostSends({ __tileapp: true, kind: 'bridge-reply', id: lastPosted().env.id, ok: true, payload: 1 });
+    await p;
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    app.destroy();
+  });
+
+  it('with no host window, a capability call is a structured unavailable refusal', async () => {
+    Object.defineProperty(window, 'parent', { value: window, configurable: true });
+    const app = createTileApp();
+    expect(await app.call('llm', 'invoke', {})).toMatchObject({ ok: false, reason: 'unavailable' });
+    app.destroy();
+  });
+
+});
+
+it('mcpCall uses origin-safe correlation and preserves bounded route status metadata', async () => {
+  const app = createTileApp();
+  const pending = app.mcpCall<{ note: string }>({ scopes: ['studio.read_file'], path: '/files/read', body: { path: 'docs/a.txt' } });
+  const posted = lastPosted();
+  expect(posted.targetOrigin).toBe(HOST);
+  expect(posted.env).toMatchObject({ kind: 'bridge-call', capability: 'mcp', method: 'call', args: { path: '/files/read' } });
+  let settled = false; void pending.then(() => { settled = true; });
+  const response = { __tileapp: true, kind: 'bridge-reply', id: posted.env.id, ok: false, reason: 'upstream-status', status: 429, code: 'RATE_LIMITED', retryAfter: 7, permission: 'mcp:studio.read_file', payload: { note: 'denied' } };
+  hostSends(response, 'https://untrusted.test'); nonParentSends(response); await Promise.resolve(); expect(settled).toBe(false);
+  hostSends(response);
+  expect(await pending).toMatchObject({ ok: false, status: 429, code: 'RATE_LIMITED', retryAfter: 7, permission: 'mcp:studio.read_file', payload: { note: 'denied' } });
+  app.destroy();
+});
+
+it('mcpCall normalizes malformed optional metadata and rate-limit hint without loosening envelope origin checks', async () => {
+  const app = createTileApp();
+  const pending = app.mcpCall({ scopes: [], path: '/files/list' });
+  hostSends({ __tileapp: true, kind: 'bridge-reply', id: lastPosted().env.id, ok: false, reason: 'rate-limited', status: '429', code: {}, retryAfter: -1, retryAfterSeconds: 4, permission: [] });
+  const result = await pending;
+  expect(result).toMatchObject({ retryAfter: 4 }); expect(result.status).toBeUndefined(); expect(result.code).toBeUndefined(); expect(result.permission).toBeUndefined();
+  app.destroy();
+});
+
+it('mcpCall caps only its own timeout at35s while allowing a shorter caller deadline', async () => {
+  vi.useFakeTimers();
+  const app = createTileApp();
+  try {
+    const pending = app.mcpCall({ scopes: [], path: '/files/list' }, { timeoutMs: 90_000 });
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'TimeoutError' });
+    await vi.advanceTimersByTimeAsync(35_000); await rejected;
+    const shorter = app.mcpCall({ scopes: [], path: '/files/list' }, { timeoutMs: 5 });
+    const shorterRejected = expect(shorter).rejects.toMatchObject({ name: 'TimeoutError' });
+    await vi.advanceTimersByTimeAsync(5); await shorterRejected;
+  } finally { app.destroy(); vi.useRealTimers(); }
 });

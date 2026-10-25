@@ -1,0 +1,233 @@
+{
+  "status": "SOURCE_COMPONENT_REQUIRES_INDEPENDENT_REVIEW_AND_JOIN",
+  "preparedAt": "2026-10-23T01:43:37.732281+00:00",
+  "base": "df43837f2f812b632237e6cce63c9d9c5f39edc2",
+  "inputs": {
+    "packages/app-sdk/src/client.ts": "0c45e3ae6b657ddb24ec7ba3787fc920383b905672fdbe9dcf8f9e8ea5b8da42",
+    "packages/app-sdk/src/client.test.ts": "b361e327c3ed8f309369bba426a611b28f28ac4c053066b82514be4b3369b9b2",
+    "packages/app-sdk/src/envelope.ts": "a8e18821a292124962e3625f12807d1e6596b26e8c21eb0bd884843aaeffd48c",
+    "packages/app-sdk/src/index.ts": "3baa4543532b44c3d3cd75595e963e9e647985e551a02129cc56baccb8082020",
+    "packages/app-sdk/src/mcp.ts": "8df27612a1e5f0311ba8d0478cddf4f21932de1c59b1fee119cfb517dffa2a90",
+    "packages/app-sdk/src/mcp.test.ts": "d19c402d9d8c02b098dbe71c5b5bf054b575f98ee2770e7801ccb76f45fde812",
+    "packages/app-sdk/package.json": "1f05d82a7dd8a4cad39242027802026fd22f71f33ab552c45b5756bcdeadb687",
+    "packages/app-sdk/package-lock.json": "d24790c7ceda2848e786d886ccd560fd1c836e9e958277fc30c5b199d783d517",
+    "packages/app-sdk/tsconfig.json": "122303ca1a470b833cb0b72c38b6ea9d0b00f17b10e66fd75dadf1ae94aa8ed7"
+  },
+  "versions": {
+    "node": "v20.20.2",
+    "npm": "10.8.2",
+    "vitest": "4.1.8"
+  },
+  "memoryBefore": "16GiB limit;5.34GiBworking-setheadroom;oom0",
+  "firstVerification": {
+    "command": "timeout 120s ./node_modules/.bin/vitest --run src/mcp.test.ts src/client.test.ts src/envelope.test.ts --maxWorkers=1 --no-file-parallelism",
+    "cwd": "packages/app-sdk",
+    "actualFiles": [
+      "src/mcp.test.ts",
+      "src/client.test.ts"
+    ],
+    "absentSelector": "src/envelope.test.ts (not a thirdpass)",
+    "pass": 49,
+    "fail": 0,
+    "start": "2026-10-23T01:32:41.050580+00:00",
+    "end": "2026-10-23T01:32:41.755248+00:00",
+    "exit": 0,
+    "inputs": {
+      "src/client.ts": "af39a5162d4427054412de6f4dc3f06c551f3fc01f94a5dbae34c36156ca11f1",
+      "src/client.test.ts": "b361e327c3ed8f309369bba426a611b28f28ac4c053066b82514be4b3369b9b2",
+      "src/envelope.ts": "a8e18821a292124962e3625f12807d1e6596b26e8c21eb0bd884843aaeffd48c",
+      "src/index.ts": "3baa4543532b44c3d3cd75595e963e9e647985e551a02129cc56baccb8082020",
+      "src/mcp.ts": "5c0e7b89c93ffe5cc1e55ca3192fa3a742b8946176704c227c7be2aaf82109ca",
+      "src/mcp.test.ts": "37da6b33c5dcc04be02b86e685ae293cd4e1477c75ed572c53dfe14ba9a0de69"
+    }
+  },
+  "refreshedMcp": {
+    "command": "timeout 120s ./node_modules/.bin/vitest --run src/mcp.test.ts --maxWorkers=1 --no-file-parallelism",
+    "pass": 21,
+    "fail": 0,
+    "start": "2026-10-23T01:33:48.895331+00:00",
+    "end": "2026-10-23T01:33:49.321521+00:00",
+    "exit": 0,
+    "source": "e7f80ca35e1b8ae6af8d2d8e7dd143da42dbdf73a5bc8c87d1be59ae008ece83"
+  },
+  "compiler": {
+    "command": "timeout 120s ./node_modules/.bin/tsc --noEmit -p tsconfig.json",
+    "start": "2026-10-23T01:32:53.081285+00:00",
+    "end": "2026-10-23T01:32:53.678421+00:00",
+    "exit": 0,
+    "sourceBoundary": "Finalclient/mcp differences since compiler are JSDoc-only; runtime/type AST unchanged. PackageREADME/doc added afterchecks."
+  },
+  "deduplicatedCases": 52,
+  "sourcePort": {
+    "source": "68f0f5ebb397bb53da76037db3953fc862dd0a61",
+    "paths": [
+      "packages/app-sdk/src/mcp.ts",
+      "packages/app-sdk/src/mcp.test.ts"
+    ],
+    "changes": "35swholepooldeadline,typedmetadata+helperadaptation,explicitfiniteexpiry/workspace/pathvalidation,redirectrefusal,currentorigincontrols; noforeignoriginURLauthority"
+  },
+  "hostReadonlyInput": {
+    "base": "df43837f2f812b632237e6cce63c9d9c5f39edc2",
+    "path": "webapp/lib/app-tile/use-tile-app-bridge.ts",
+    "sha256": "5205aadeea1ed6fbc8d0a3f8a2391e1b088a862c5219e85135cbc04da86f2c93",
+    "finding": "reply spreads brokerbody; bridge forwards JSONwhole at runtime; selectedhosttestsnotrunbythisauthor"
+  },
+  "exclusions": [
+    "No actualnetwork/live/token/provider/native",
+    "No SDKpublicversion/publish",
+    "No generated/vendoredconsumers",
+    "No actualcandidate/Cqualification",
+    "Fallbackonlysameoriginhostrouting/trustedfetchadapter; notuniversalexternaliframe",
+    "LocalJWTdecode isnot tokenauthorityverification; serververifiesactualgrants"
+  ],
+  "historicalSnapshots": [
+    {
+      "commit": "b5e8066e9e3dc293345b00737939eb1b0aa89dd4",
+      "receipt": {
+        "status": "SOURCE_COMPONENT_REQUIRES_INDEPENDENT_REVIEW_AND_JOIN",
+        "preparedAt": "2026-10-23T01:35:40.795045+00:00",
+        "base": "df43837f2f812b632237e6cce63c9d9c5f39edc2",
+        "inputs": {
+          "packages/app-sdk/src/client.ts": "0c45e3ae6b657ddb24ec7ba3787fc920383b905672fdbe9dcf8f9e8ea5b8da42",
+          "packages/app-sdk/src/client.test.ts": "b361e327c3ed8f309369bba426a611b28f28ac4c053066b82514be4b3369b9b2",
+          "packages/app-sdk/src/envelope.ts": "a8e18821a292124962e3625f12807d1e6596b26e8c21eb0bd884843aaeffd48c",
+          "packages/app-sdk/src/index.ts": "3baa4543532b44c3d3cd75595e963e9e647985e551a02129cc56baccb8082020",
+          "packages/app-sdk/src/mcp.ts": "19319666ae160ad06ea64a3d5b6fc26887b25e346be9741e8605ba21201c78ac",
+          "packages/app-sdk/src/mcp.test.ts": "e7f80ca35e1b8ae6af8d2d8e7dd143da42dbdf73a5bc8c87d1be59ae008ece83",
+          "packages/app-sdk/package.json": "1f05d82a7dd8a4cad39242027802026fd22f71f33ab552c45b5756bcdeadb687",
+          "packages/app-sdk/package-lock.json": "d24790c7ceda2848e786d886ccd560fd1c836e9e958277fc30c5b199d783d517",
+          "packages/app-sdk/tsconfig.json": "122303ca1a470b833cb0b72c38b6ea9d0b00f17b10e66fd75dadf1ae94aa8ed7"
+        },
+        "versions": {
+          "node": "v20.20.2",
+          "npm": "10.8.2",
+          "vitest": "4.1.8"
+        },
+        "memoryBefore": "16GiB limit;5.34GiBworking-setheadroom;oom0",
+        "firstVerification": {
+          "command": "timeout120s ./node_modules/.bin/vitest --run src/mcp.test.ts src/client.test.ts src/envelope.test.ts --maxWorkers=1 --no-file-parallelism",
+          "cwd": "packages/app-sdk",
+          "actualFiles": [
+            "src/mcp.test.ts",
+            "src/client.test.ts"
+          ],
+          "absentSelector": "src/envelope.test.ts (not a thirdpass)",
+          "pass": 49,
+          "fail": 0,
+          "start": "2026-10-23T01:32:41.050580+00:00",
+          "end": "2026-10-23T01:32:41.755248+00:00",
+          "exit": 0,
+          "inputs": {
+            "src/client.ts": "af39a5162d4427054412de6f4dc3f06c551f3fc01f94a5dbae34c36156ca11f1",
+            "src/client.test.ts": "b361e327c3ed8f309369bba426a611b28f28ac4c053066b82514be4b3369b9b2",
+            "src/envelope.ts": "a8e18821a292124962e3625f12807d1e6596b26e8c21eb0bd884843aaeffd48c",
+            "src/index.ts": "3baa4543532b44c3d3cd75595e963e9e647985e551a02129cc56baccb8082020",
+            "src/mcp.ts": "5c0e7b89c93ffe5cc1e55ca3192fa3a742b8946176704c227c7be2aaf82109ca",
+            "src/mcp.test.ts": "37da6b33c5dcc04be02b86e685ae293cd4e1477c75ed572c53dfe14ba9a0de69"
+          }
+        },
+        "refreshedMcp": {
+          "command": "timeout120s ./node_modules/.bin/vitest --run src/mcp.test.ts --maxWorkers=1 --no-file-parallelism",
+          "pass": 21,
+          "fail": 0,
+          "start": "2026-10-23T01:33:48.895331+00:00",
+          "end": "2026-10-23T01:33:49.321521+00:00",
+          "exit": 0,
+          "source": "e7f80ca35e1b8ae6af8d2d8e7dd143da42dbdf73a5bc8c87d1be59ae008ece83"
+        },
+        "compiler": {
+          "command": "timeout120s ./node_modules/.bin/tsc --noEmit -p tsconfig.json",
+          "start": "2026-10-23T01:32:53.081285+00:00",
+          "end": "2026-10-23T01:32:53.678421+00:00",
+          "exit": 0,
+          "sourceBoundary": "Finalclient/mcp differences since compiler are JSDoc-only; runtime/type AST unchanged. PackageREADME/doc added afterchecks."
+        },
+        "deduplicatedCases": 49,
+        "sourcePort": {
+          "source": "68f0f5ebb397bb53da76037db3953fc862dd0a61",
+          "paths": [
+            "packages/app-sdk/src/mcp.ts",
+            "packages/app-sdk/src/mcp.test.ts"
+          ],
+          "changes": "35swholepooldeadline,typedmetadata+helperadaptation,explicitfiniteexpiry/workspace/pathvalidation,redirectrefusal,currentorigincontrols; noforeignoriginURLauthority"
+        },
+        "hostReadonlyInput": {
+          "base": "df43837f2f812b632237e6cce63c9d9c5f39edc2",
+          "path": "webapp/lib/app-tile/use-tile-app-bridge.ts",
+          "sha256": "5205aadeea1ed6fbc8d0a3f8a2391e1b088a862c5219e85135cbc04da86f2c93",
+          "finding": "reply spreads brokerbody; bridge forwards JSONwhole at runtime; selectedhosttestsnotrunbythisauthor"
+        },
+        "exclusions": [
+          "No actualnetwork/live/token/provider/native",
+          "No SDKpublicversion/publish",
+          "No generated/vendoredconsumers",
+          "No actualcandidate/Cqualification",
+          "Fallbackonlysameoriginhostrouting/trustedfetchadapter; notuniversalexternaliframe",
+          "LocalJWTdecode isnot tokenauthorityverification; serververifiesactualgrants"
+        ]
+      }
+    }
+  ],
+  "correctionReview": {
+    "reviewedCommit": "b5e8066e9e3dc293345b00737939eb1b0aa89dd4",
+    "reportSha256": "55518f6cb9b4934695a4f460c815696214b4f313db672cce3bcc79d4231d2d9b",
+    "status": "runtime/test/docs corrections complete; exact independent confirmation pending",
+    "scope": [
+      "B1 dotworkspace namespace refusal",
+      "N1 exact UTF8decode",
+      "N2 finiteRetryAfter",
+      "N3 noerrorredactionclaim",
+      "N4 commanddisplay spacing; originalsnapshot retained"
+    ],
+    "commandTypo": "Actual subprocess argv always timeout and120s separately; originalreceipt displayed timeout120s incorrectly, no CLIexecutionfailureclaimed"
+  },
+  "correctionVerification": {
+    "baseline": {
+      "source": "b5e8066e9e3dc293345b00737939eb1b0aa89dd4",
+      "module": "packages/app-sdk/src/mcp.ts",
+      "testOverlaySha256": "d19c402d9d8c02b098dbe71c5b5bf054b575f98ee2770e7801ccb76f45fde812",
+      "pass": 21,
+      "fail": 3,
+      "start": "2026-10-23T01:43:10.687107+00:00",
+      "end": "2026-10-23T01:43:11.167303+00:00",
+      "exit": 1,
+      "scope": "Synthetic unsignedJWT/fakehost/fetch only, notactualissueror liveexploit"
+    },
+    "mcp": {
+      "pass": 24,
+      "fail": 0,
+      "argv": [
+        "timeout",
+        "120s",
+        "./node_modules/.bin/vitest",
+        "--run",
+        "src/mcp.test.ts",
+        "--maxWorkers=1",
+        "--no-file-parallelism"
+      ],
+      "start": "2026-10-23T01:43:11.200974+00:00",
+      "end": "2026-10-23T01:43:11.643226+00:00",
+      "exit": 0
+    },
+    "compiler": {
+      "argv": [
+        "timeout",
+        "120s",
+        "./node_modules/.bin/tsc",
+        "--noEmit",
+        "-p",
+        "tsconfig.json"
+      ],
+      "start": "2026-10-23T01:43:11.643957+00:00",
+      "end": "2026-10-23T01:43:12.208230+00:00",
+      "exit": 0
+    },
+    "sourceSha256": "8df27612a1e5f0311ba8d0478cddf4f21932de1c59b1fee119cfb517dffa2a90",
+    "node": "v20.20.2",
+    "npm": "10.8.2",
+    "vitest": "4.1.8",
+    "memoryBefore": "16GiB limit;5.38GiBworking-setheadroom;oom0",
+    "clientMapping": "28unchangedclientcases atb5e inputmapping; notrerun",
+    "remaining": "Independent exactcorrection confirmation; actualhost/broker/API/containerjoin/publication/consumerselection separate"
+  }
+}

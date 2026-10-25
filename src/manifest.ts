@@ -14,17 +14,19 @@
  * unknown/extra fields — the platform manifest is additive.
  */
 
+import { mcpProviderShapeErrors, type TileAppMcpProvider } from './mcp-provider-descriptor.js';
+
 // ── Types (mirror of the server's tileapp.ts) ───────────────────────────────
 
 /**
  * A permission is a namespaced, user-grantable capability. Plain strings on the
  * wire; see `KNOWN_PERMISSIONS` for the well-known catalog. Known shapes:
  *
- *   fs.<read|readwrite>:<scope>     e.g. fs.readwrite:app-data, fs.read:workspace
  *   net:<host>                      e.g. net:api.elevenlabs.io      (never '*')
- *   media.<upload|download>:<kind>  e.g. media.upload:video
- *   secret:<KEY_NAME>               first-party only — see note on KNOWN_PERMISSIONS
- *   mcp:<scope> / llm.invoke / device.<capability>
+ *   secret:<KEY_NAME>               a key from the user's environment profile — see the note below
+ *   mcp:<scope> / llm.invoke / notifications.send:<where> / device.<capability>
+ *   fs.<read|readwrite>:<scope>     retired: refused where the platform runs `TILEAPP_FS_RETIRED`
+ *   media.<upload|download>:<kind>  inert: does nothing (use the browser's file picker / downloads)
  *
  * `llm.invoke` is the SINGLE, provider-agnostic LLM permission — there is no
  * per-provider and no per-model permission, and a legacy `llm.invoke:<provider>`
@@ -63,7 +65,31 @@ export interface TileAppImage {
   sizeBytes?: number;
 }
 
+/**
+ * Where an app runs (CLOUDFLARE_APP_TILES_PLAN §4.2). The platform picks it
+ * from the manifest; it is not a manifest field:
+ *
+ *   ui         no `runtime`: a pure UI served from its own origin, no server.
+ *   worker     `runtime.kind: 'worker'`: the backend is an isolated edge worker
+ *              (request/response JS). A personal app's version still being
+ *              edited runs in live mode, for its owner only.
+ *   container  `runtime` with `image` and `isolation: 'dedicated'` (or
+ *              `'edge'`): the backend gets its own isolated machine, sized by
+ *              `resources.instanceType`.
+ *
+ * Running inside the user's workspace is first-party workspace mode only; other
+ * apps with a server use `worker` or `container`. The consent screen names the
+ * placement in these words.
+ */
+export type TileAppPlacement = 'ui' | 'worker' | 'container';
+
 export interface TileAppRuntime {
+  /**
+   * Runtime flavour. Absent or `'process'`: a process from `image` (the
+   * `container` placement). `'worker'`: a request-driven edge backend (the
+   * `worker` placement). See {@link TileAppPlacement}.
+   */
+  kind?: 'process' | 'worker';
   /** Port the app process listens on; proxied to the iframe surface. */
   port: number;
   /** Substring/regex matched against process stdout to detect ready. */
@@ -79,6 +105,11 @@ export interface TileAppPermissions {
   required: TileAppPermission[];
   /** Per-permission opt-in toggles; the app must degrade gracefully if declined. */
   optional?: TileAppPermission[];
+}
+
+/** See {@link TileAppManifest.links}. */
+export interface TileAppLinks {
+  open?: string[];
 }
 
 export interface TileAppManifest {
@@ -97,14 +128,30 @@ export interface TileAppManifest {
   /** OCI image the runtime launches for this app's server. Pure-UI apps omit it. */
   image?: TileAppImage;
   permissions: TileAppPermissions;
-  /** Declared resource ceiling — informs the consent screen + bounds the runtime. */
-  resources?: { cpu?: string; memory?: string; diskQuota?: string };
+  /**
+   * External pages the app may ask the host to open in a new tab
+   * (`app.openLink(url)` / `openLink(app, url)`). Each pattern is
+   * `https://<host><path>`: one exact host (no wildcard, port or user info) and a
+   * path, where a trailing `*` makes the path a prefix — e.g.
+   * `https://github.com/*`. The consent screen lists the hosts.
+   */
+  links?: TileAppLinks;
+  /** What the app serves to others: `mcp`, tools for the workspace's agents (server-gated). */
+  provides?: { mcp?: TileAppMcpProvider };
+  /**
+   * Declared resource ceiling — informs the consent screen + bounds the runtime.
+   * `instanceType` is the `container` placement's machine size (`basic` when absent or unknown).
+   */
+  resources?: { cpu?: string; memory?: string; diskQuota?: string; instanceType?: string };
   /** Whether the app is installable. Disabled apps stay in the registry but are hidden. */
   enabled?: boolean;
   /** Marketplace discovery only; false preserves direct access and existing installs. Defaults to true. */
   marketplaceListed?: boolean;
-  /** Pod isolation tier (P6 untrusted phase): shared vs dedicated. */
-  isolation?: 'shared' | 'dedicated';
+  /**
+   * Isolation for a server: `'dedicated'` (or `'edge'`) asks for the `container`
+   * placement, its own machine. `'shared'` is first-party workspace mode only.
+   */
+  isolation?: 'shared' | 'dedicated' | 'edge';
   /** Ed25519 signature (base64) over the canonical manifest — P6 untrusted phase. */
   signature?: string;
   /** Id of the publisher key that produced `signature`. */
@@ -119,20 +166,32 @@ export interface TileAppManifest {
  * platform is additive — but it covers the common catalog of the marketplace
  * permissions model.
  *
- * NOTE: raw `secret:<KEY>` grants are FIRST-PARTY ONLY — they were killed for
- * third-party apps (marketplace Q5: raw key injection is `internal`). Third
- * parties use brokered credentials (a future SDK surface), so there is
- * deliberately no `secret:` helper here and no secret API in this package.
+ * NOTE on `secret:<KEY>`: how the key reaches your app depends on who published it and where it
+ * runs, and a third-party app never receives the key itself. On the worker and container
+ * placements the gateway attaches it to requests to the key's vendor host (a header); a
+ * first-party app in the workspace pod gets it in its server's environment. A key the placement
+ * can't deliver (no vendor descriptor, a key sent in the URL on the edge) is listed in the launch's
+ * `withheldSecrets`; a required one refuses the launch. There is no API in this package that
+ * returns secret bytes.
  */
 export const KNOWN_PERMISSIONS = {
+  /** @deprecated Does nothing: tile apps upload and download with the browser's file picker. Remove it (with consent v2 on, the platform refuses inert permissions). */
   MEDIA_UPLOAD_VIDEO: 'media.upload:video',
+  /** @deprecated Does nothing: use the browser's downloads. Remove it. */
   MEDIA_DOWNLOAD_VIDEO: 'media.download:video',
+  /** @deprecated Does nothing: use the browser's file picker. Remove it. */
   MEDIA_UPLOAD_AUDIO: 'media.upload:audio',
+  /** @deprecated Does nothing: use the browser's downloads. Remove it. */
   MEDIA_DOWNLOAD_AUDIO: 'media.download:audio',
+  /** @deprecated Does nothing: use the browser's file picker. Remove it. */
   MEDIA_UPLOAD_IMAGE: 'media.upload:image',
+  /** @deprecated Does nothing: use the browser's downloads. Remove it. */
   MEDIA_DOWNLOAD_IMAGE: 'media.download:image',
+  /** @deprecated `fs.*` is being retired. App data: your server's own storage (`/data`, or tile data on a worker). Workspace files: `mcp:studio.read_file:<folder>/**` through `mcp.call`. */
   FS_READWRITE_APP_DATA: 'fs.readwrite:app-data',
+  /** @deprecated `fs.*` is being retired: use your server's own storage. */
   FS_READ_APP_DATA: 'fs.read:app-data',
+  /** @deprecated `fs.*` is being retired: request `mcp:studio.read_file:<folder>/**` (and `mcp:studio.list_files:<folder>/**`) and call it through `mcp.call`. */
   FS_READ_WORKSPACE: 'fs.read:workspace',
   NOTIFICATIONS_SEND_GLOBAL: 'notifications.send:global',
   NOTIFICATIONS_SEND_WORKSPACE: 'notifications.send:workspace',
@@ -241,17 +300,77 @@ function isStr(v: unknown): v is string {
  * the deep `mcp:`-scope catalog check stays server-side — apps don't use mcp).
  * Permissive about extra/unknown keys (the platform manifest is additive).
  *
- * Intentional, audience-correct divergences (this is the THIRD-PARTY
- * validator): it rejects ALL `secret:` grants (server accepts `secret:<preset>`
- * for first-party manifests — raw secrets are first-party-only, Q5; third
- * parties use brokered credentials) and `mcp:work.*` grants (internal, never
- * app-grantable). Other `mcp:` scopes are deferred to the server's per-scope
- * classification.
+ * Differences from the server: `secret:<KEY>` is checked for shape only
+ * (UPPER_SNAKE_CASE); the server also requires a known environment-profile
+ * preset and, with consent v2, a `runtime` to deliver it to. `mcp:work.*` grants
+ * are refused (internal, never app-grantable); other `mcp:` scopes are deferred
+ * to the server's per-scope classification.
  */
+const MAX_LINK_PATTERNS = 32;
+const LINK_LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
+const LINK_HOST_RE = new RegExp(`^${LINK_LABEL}(?:\\.${LINK_LABEL})+$`);
+const LINK_PATH_RE = /^\/[A-Za-z0-9\-._~!$&'()+,;=:@%/]*\*?$/;
+
+/**
+ * Why a `links.open` pattern is invalid, or null when it is valid: https only,
+ * one exact lowercase DNS host (no wildcard, port or user info), a path that
+ * may end in `*` (prefix) and has no other `*`, query, fragment or `.`/`..`
+ * segment.
+ */
+export function linkPatternError(raw: string): string | null {
+  const quoted = JSON.stringify(raw);
+  if (!raw || raw.length > 512) return `link pattern must be 1-512 characters: ${quoted.slice(0, 80)}`;
+  if (!raw.startsWith('https://')) return `link pattern must start with https:// (no http, javascript: or data:): ${quoted}`;
+  const rest = raw.slice('https://'.length);
+  const slash = rest.indexOf('/');
+  const host = slash === -1 ? rest : rest.slice(0, slash);
+  const path = slash === -1 ? '' : rest.slice(slash);
+  if (host.includes('*')) return `link pattern must name one host, no wildcards: ${quoted}`;
+  if (!LINK_HOST_RE.test(host) || !/[a-z]/.test(host.slice(host.lastIndexOf('.') + 1))) {
+    return `link pattern host must be a lowercase DNS name with no port or user info: ${quoted}`;
+  }
+  if (!path) return `link pattern needs a path, e.g. https://${host}/*: ${quoted}`;
+  if (!LINK_PATH_RE.test(path)) return `link pattern path may use '*' only at the end, and no query or fragment: ${quoted}`;
+  const literal = path.endsWith('*') ? path.slice(0, -1) : path;
+  let normalized = '';
+  try { normalized = new URL(`https://${host}${literal}`).pathname; } catch { /* stays '' */ }
+  if (normalized !== literal) return `link pattern path is not in normal form (no '.' or '..' segments): ${quoted}`;
+  return null;
+}
+
+/** Options for {@link validateManifest}. */
+export interface ValidateManifestOptions {
+  /**
+   * Whether the target server has the `worker` placement on (default true, the
+   * platform's cutover state). Off, the server treats `runtime.kind: 'worker'`
+   * like any runtime: it needs an `image` or `runtime.exec`, and the worker-only
+   * rules don't apply.
+   */
+  workerPlacement?: boolean;
+  /**
+   * The target server's TILEAPP_CONSENT_V2 (default false, as on servers today; pass
+   * true — with `fsRetired` and `staticPlacement` — to check against the cutover profile): on, a
+   * permission that would be granted and do nothing is refused at publish —
+   * `media.*`, `device.*`, `net:` without a runtime, and a pure-UI app's
+   * non-workspace `fs.*` where static placement is on. (Internal `mcp:` scopes are
+   * refused there too; this pre-check can't classify scopes, so the server decides.)
+   */
+  consentV2?: boolean;
+  /** The target server's TILEAPP_FS_RETIRED (default false): on, any `fs.*` is refused at publish. */
+  fsRetired?: boolean;
+  /** Whether the target server has the `static` placement on (default false). */
+  staticPlacement?: boolean;
+}
+
 export function validateManifest(
   value: unknown,
+  opts: ValidateManifestOptions = {},
 ): { ok: true; manifest: TileAppManifest } | { ok: false; errors: string[] } {
   const errors: string[] = [];
+  const workerPlacement = opts.workerPlacement !== false;
+  const consentV2 = opts.consentV2 === true;
+  const fsRetired = opts.fsRetired === true;
+  const staticPlacement = opts.staticPlacement === true;
   if (!isObj(value)) return { ok: false, errors: ['manifest is not an object'] };
 
   if (!isStr(value.id) || !ID_RE.test(value.id)) {
@@ -289,7 +408,16 @@ export function validateManifest(
     } else {
       if (typeof rt.port !== 'number' || rt.port <= 0) errors.push('runtime.port must be a positive number');
       if (rt.exec !== undefined && !isStr(rt.exec)) errors.push('runtime.exec must be a non-empty string when present');
+      if (rt.kind !== undefined && rt.kind !== 'process' && rt.kind !== 'worker') errors.push("runtime.kind must be 'process' | 'worker' when present");
     }
+  }
+  // Like the server, `runtime.kind: 'worker'` is a worker only where the worker placement is on.
+  const workerRuntime = workerPlacement && isObj(value.runtime) && value.runtime.kind === 'worker';
+  // A worker runs from the bundle's _worker/ modules: an image or exec would be ignored (the server refuses both at publish).
+  if (workerRuntime && value.image !== undefined) errors.push("runtime.kind 'worker' runs from the bundle's _worker/ modules — remove `image`, it would be ignored");
+  if (workerRuntime && isObj(value.runtime) && value.runtime.exec !== undefined) errors.push("runtime.kind 'worker' runs from the bundle's _worker/ modules — remove `runtime.exec`, it would be ignored");
+  if (value.isolation !== undefined && value.isolation !== 'shared' && value.isolation !== 'dedicated' && value.isolation !== 'edge') {
+    errors.push("isolation must be 'shared' | 'dedicated' | 'edge' when present");
   }
 
   // image (optional)
@@ -307,7 +435,7 @@ export function validateManifest(
     }
   }
   // A manifest with `runtime` must carry an `image` OR (legacy) `runtime.exec`.
-  if (isObj(value.runtime) && value.image === undefined && !isStr(value.runtime.exec)) {
+  if (isObj(value.runtime) && !workerRuntime && value.image === undefined && !isStr(value.runtime.exec)) {
     errors.push('runtime requires either `image` (OCI image, recommended) or `runtime.exec` (bare-process override)');
   }
 
@@ -331,13 +459,11 @@ export function validateManifest(
     if (parsed.namespace === 'net' && (parsed.arg === '*' || parsed.arg?.includes('*'))) {
       errors.push(`net permission must name a specific host (no wildcards): '${p}'`);
     }
-    // Raw secret injection is FIRST-PARTY ONLY (marketplace Q5). This SDK
-    // targets third-party apps, which get user secrets via brokered credentials
-    // (a future SDK surface), never raw bytes — so reject `secret:` here. (The
-    // server accepts `secret:<preset>` for first-party manifests, which don't
-    // use this SDK; this is an intentional, audience-correct divergence.)
-    if (parsed.namespace === 'secret') {
-      errors.push(`secret permissions are not available to third-party apps — use brokered credentials (raw 'secret:' injection is first-party only): '${p}'`);
+    // `secret:<KEY>`: a key from the user's environment profile. A third-party app never receives
+    // the key itself: the platform attaches it to requests to its vendor host (P1.8). The server
+    // checks the key is one it knows (an environment-profile preset); here only its shape.
+    if (parsed.namespace === 'secret' && !/^[A-Z][A-Z0-9_]{0,63}$/.test(parsed.action ?? '')) {
+      errors.push(`secret permissions name an environment-profile key in UPPER_SNAKE_CASE: '${p}'`);
     }
     // mcp:work.* scopes are internal and never app-grantable (permissions model
     // §2.2). Reject those; OTHER mcp scopes are classified per-scope, so leave
@@ -346,7 +472,48 @@ export function validateManifest(
     if (parsed.namespace === 'mcp' && (parsed.arg ?? '').startsWith('work.')) {
       errors.push(`mcp:work.* scopes are internal and not grantable to third-party apps: '${p}'`);
     }
+    // Mirrors the server's publish refusals (validateManifestForPublish) for the target's flags.
+    const hasRuntime = isObj(value.runtime);
+    if (parsed.namespace === 'fs' && fsRetired) {
+      errors.push(`fs.* permissions are retired: request a read-only MCP folder scope (mcp:studio.read_file:<folder>/**) and call it through mcp.call: '${p}'`);
+    } else if (consentV2) {
+      if (parsed.namespace === 'media') errors.push(`'${p}' does nothing: tile apps upload and download files with the browser's file picker. Remove it.`);
+      if (parsed.namespace === 'device') errors.push(`'${p}' does nothing: tile apps have no device access through a permission. Remove it.`);
+      if (parsed.namespace === 'net' && !hasRuntime) errors.push(`'${p}' does nothing for an app without a server (runtime). Remove it, or add a runtime that uses it.`);
+      if (parsed.namespace === 'fs' && !hasRuntime && staticPlacement && parsed.arg !== 'workspace') {
+        errors.push(`'${p}' does nothing for an app without a server: its UI runs from YOLO's edge and has no workspace data directory. Remove it.`);
+      }
+    }
   }
+
+  // links (optional) — the same pattern rules as the server's
+  // services/tileapp/link-patterns.ts and the host's link-open.ts.
+  if (value.links !== undefined) {
+    if (!isObj(value.links)) {
+      errors.push('links must be an object when present');
+    } else {
+      // Only `open` (P2.1): sub-frames and OAuth are separate operations apps don't get yet.
+      for (const k of Object.keys(value.links)) {
+        if (k !== 'open') errors.push(`links.${k} isn't supported: an app opens external pages with links.open (a new tab). Embedding another site in a frame and signing in through OAuth aren't available to apps yet (see the link, frame and OAuth contract)`);
+      }
+    }
+    if (isObj(value.links) && value.links.open !== undefined) {
+      const open = value.links.open;
+      if (!Array.isArray(open) || !open.every((p) => typeof p === 'string')) {
+        errors.push('links.open must be an array of strings when present');
+      } else {
+        if (open.length > MAX_LINK_PATTERNS) errors.push(`links.open may declare at most ${MAX_LINK_PATTERNS} patterns`);
+        for (const p of open) {
+          const problem = linkPatternError(p);
+          if (problem) errors.push(problem);
+        }
+      }
+    }
+  }
+
+  // provides.mcp (serving tools to agents): the shape here; the server also requires its provider
+  // flag, the per-app allowlist and the worker placement (docs/TILE_APP_MCP_PROVIDER_PLAN.md).
+  errors.push(...mcpProviderShapeErrors(value.provides));
 
   if (value.resources !== undefined && !isObj(value.resources)) {
     errors.push('resources must be an object when present');

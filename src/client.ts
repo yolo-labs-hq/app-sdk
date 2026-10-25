@@ -20,9 +20,10 @@ import type {
   EnvProfileAppliedEnvelope,
   HostEventKind,
   OutboundEnvelope,
+  OutboundRequestEnvelope,
 } from './envelope.js';
 import { isBridgeReply, isEnvProfileApplied, isZenStateChanged, BRIDGE_PROTOCOL_VERSION } from './envelope.js';
-import { isDockAction, isDockPreviewRequest, type DockPreview } from './envelope.js';
+import { isDockAction, isDockPreviewRequest, isHostHello, type DockPreview } from './envelope.js';
 
 // ── Call timeout defaults ───────────────────────────────────────────────────
 //
@@ -68,11 +69,40 @@ const DEFAULT_CALL_TIMEOUT_MS = GATEWAY_LLM_TIMEOUT_MS + CALL_TIMEOUT_MARGIN_MS;
  *  Generic in the payload so the typed helpers below (`llmInvoke`,
  *  `llmDiscover`) can hand back a known shape. Defaults to `unknown`, so the
  *  plain `call()` signature is unchanged. */
+/**
+ * Why a call came back `ok: false` (mirror of the server's `BrokerDenyReason`,
+ * plus the host's own bridge refusals). Widened with `string`: the union is
+ * additive, so handle unknown reasons generically.
+ *
+ *  - `app-not-installed` / `app-not-found` / `permission-not-granted` (`permission` names it)
+ *  - `unknown-capability` / `unknown-method`: this host doesn't have it (older host or flag off)
+ *  - `invalid-args`, `rate-limited`, `spend-cap-reached`, `insufficient-credits`
+ *  - `upstream-not-configured` / `upstream-failed` / `upstream-status` / `timeout`
+ *  - `model-not-found` / `model-unavailable` (llm)
+ *  - `placement-unsupported`: not available where the app runs (e.g. `fs.*` from an edge backend)
+ *  - `deprecated`: retired (e.g. `mcp.mint-token`: use `mcp.call`)
+ *  - host: `user-declined`, `busy`, `link-not-declared`, `reconsent-required`, `install-failed`, `not-focused`, `unauthorized`
+ */
+export type TileAppDenyReason =
+  | 'app-not-installed' | 'app-not-found' | 'permission-not-granted'
+  | 'unknown-capability' | 'unknown-method' | 'invalid-args'
+  | 'upstream-not-configured' | 'upstream-failed' | 'upstream-status' | 'timeout'
+  | 'spend-cap-reached' | 'rate-limited' | 'insufficient-credits'
+  | 'model-not-found' | 'model-unavailable'
+  | 'placement-unsupported' | 'deprecated'
+  | 'user-declined' | 'busy' | 'link-not-declared' | 'reconsent-required' | 'install-failed' | 'not-focused' | 'unauthorized'
+  | 'not-implemented' | 'unavailable' | 'popup-blocked'
+  | (string & {});
+
 export interface TileAppCallResult<TPayload = unknown> {
   ok: boolean;
   payload?: TPayload;
-  reason?: string;
+  reason?: TileAppDenyReason;
   message?: string;
+  status?: number;
+  code?: string | null;
+  retryAfter?: number | null;
+  permission?: string;
 }
 
 export interface TileAppCallOptions {
@@ -88,6 +118,11 @@ export interface TileAppCallOptions {
    * you would rather pay for a late answer than wait for it.
    */
   timeoutMs?: number;
+  /**
+   * Cancels the call: it rejects with {@link CancelledError}. Like the timeout, this
+   * stops waiting; it doesn't undo work the platform already started.
+   */
+  signal?: AbortSignal;
 }
 
 /** Result of an accepted `requestPermissions`. */
@@ -387,7 +422,87 @@ export type LlmDenyReason =
   | 'upstream-not-configured'
   | (string & {});
 
+// ── capabilities.get ────────────────────────────────────────────────────────
+
+/** Mirror of the server's capability contract (`tileapp-capabilities/v1`). Additive: ignore unknown fields. */
+export interface TileAppCapabilityDecision {
+  permission: string;
+  family: 'net' | 'secret' | 'mcp' | 'llm' | 'notifications' | 'fs' | 'media' | 'device' | 'other' | (string & {});
+  required: boolean;
+  /** Whether this install holds it. */
+  granted: boolean;
+  /** `enforced`: something acts on it here; `refused`: install refuses it; `inert`: accepted, does nothing; `unavailable`: not delivered here. */
+  state: 'enforced' | 'refused' | 'inert' | 'unavailable' | (string & {});
+  enforcement?: { by: string; [k: string]: unknown };
+  reason?: string;
+  /** Which surface can use it where the app runs: the UI (this bridge) and/or the app's server. */
+  surfaces: { ui: boolean; backend: boolean };
+  vendorHost?: string;
+  /** A required permission whose absence here refuses the launch. */
+  blocksLaunch?: true;
+}
+
+export interface TileAppCapabilities {
+  version: string;
+  /** Internal hosting placement (`static`, `worker`, `container`, `pod`, `pod-static`), or null when it can't run here. */
+  placement: string | null;
+  /** `running`: where this tile's instance runs now; `prospective`: where a new launch would run. */
+  basis?: 'running' | 'prospective' | (string & {});
+  decisions: TileAppCapabilityDecision[];
+  implicit: Array<{ id: string; surfaces: { ui: boolean; backend: boolean }; available: boolean; note: string; hosts?: string[] }>;
+  ambient: { navigation: string; isolation: string | null; podLoopback: string | null };
+  /** Where this tile's state lives and who shares it (P1.7). Absent from servers that predate it. */
+  storage?: TileAppStorageContract;
+}
+
+/**
+ * Browser scopes: `app-version-origin` (each app version has its own, shared by every
+ * workspace and account on the browser), `app-origin`,
+ * `shared-origin` (every pod-hosted UI can read it), `workspace-preview-origin`.
+ * Backend scopes: `app-user` (worker tile data: the same in every workspace) or
+ * `instance` (this tile's `/data`). The portable key/value API: `createWorkerKv` / `createDirectoryKv`.
+ */
+export interface TileAppStorageContract {
+  browser: { scope: 'app-version-origin' | 'app-origin' | 'shared-origin' | 'workspace-preview-origin' | (string & {}) | null; note: string };
+  backend: {
+    scope: 'app-user' | 'instance' | (string & {}) | null;
+    api: 'kv' | 'directory' | (string & {}) | null;
+    quota: { maxBytes: number; maxKeys?: number; maxValueBytes?: number } | null;
+    exportable: boolean;
+    deletedWithAccount: boolean;
+    note: string;
+  };
+}
+
 /** In-app delivery surfaces. `both` is one notification with shared read/dismiss state. */
+// ── mcp.call ────────────────────────────────────────────────────────────────
+
+/**
+ * `mcp.call` args. The broker checks every scope against the grant, mints a
+ * token with exactly those scopes server-side, calls the MCP route in your
+ * workspace and returns its answer — the token never reaches the app.
+ */
+export interface McpCallArgs {
+  /** The `mcp:` scopes this call needs, without the `mcp:` prefix. Each must be granted. */
+  scopes: string[];
+  /** Relative MCP route path, e.g. `/kanban/board/get`. No scheme, host, query, `..` or encoding. */
+  path: string;
+  /** Defaults to `POST`. */
+  method?: 'POST' | 'GET';
+  /** JSON body for a `POST`. */
+  body?: unknown;
+}
+
+/**
+ * Refusal reasons specific to `mcp.call`, on top of the usual broker ones
+ * (`permission-not-granted`, `invalid-args`, `unknown-method` while the host has
+ * it switched off):
+ *  - `upstream-status` — the MCP route answered non-2xx; read `status`, `code`
+ *    and, for a 429, `retryAfter`.
+ *  - `timeout` — no answer within 30 s; `status` is 504.
+ */
+export type McpCallDenyReason = 'upstream-status' | 'timeout';
+
 export type TileAppNotificationDestination = 'global' | 'workspace' | 'both';
 export interface SendNotificationArgs {
   destination: TileAppNotificationDestination;
@@ -438,8 +553,27 @@ export interface TileApp {
    * an alias server-side.
    */
   llmDiscover(args?: LlmDiscoverArgs, opts?: TileAppCallOptions): Promise<TileAppCallResult<LlmDiscoverPayload>>;
+  /** Server-held MCP call; returns route data/status, default/capped35s (shorter override allowed). */
+  mcpCall<TPayload = unknown>(args: McpCallArgs, opts?: TileAppCallOptions): Promise<TileAppCallResult<TPayload>>;
   /** Send a permission-gated notification to Studio's bell, workspace bar, or both. */
   sendNotification(args: SendNotificationArgs, opts?: TileAppCallOptions): Promise<TileAppCallResult<SendNotificationPayload>>;
+  /**
+   * Typed `link.open` — exactly `call('link', 'open', { url })`. The host opens
+   * an `https://` URL that matches your manifest's `links.open` patterns in a
+   * new tab, after asking the user once per host. Call it from a click. Refusals
+   * (`unknown-method` on hosts without it, `invalid-args`, `link-not-declared`,
+   * `user-declined`, `busy`) come back as `ok: false`. See {@link openLink} in
+   * `./link.js` for a throwing variant.
+   */
+  openLink(url: string, opts?: TileAppCallOptions): Promise<TileAppCallResult<{ opened: true; host: string }>>;
+  /**
+   * What this app can do where it runs (`capabilities.get`): each declared
+   * permission's state, whether it is granted and which surface can use it, the
+   * implicit capabilities and the ambient disclosures. Resolves null on a host
+   * without discovery (`unknown-capability` / `unknown-method`), so feature-detect
+   * rather than assume. Needs no permission.
+   */
+  capabilities(opts?: TileAppCallOptions): Promise<TileAppCapabilities | null>;
   /**
    * The app's own context (workspaceId, tileId, appId, theme), answered by the
    * host with no server round-trip. Cached after the first successful reply.
@@ -464,6 +598,8 @@ interface Pending {
   resolve: (reply: BridgeReplyEnvelope) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** Removes this call's abort listener from its signal; run on every settlement. */
+  unlisten?: () => void;
 }
 
 // The host holds ONE pending permission request per tile (iframe), so the
@@ -496,6 +632,7 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
     const p = pending.get(id);
     if (!p) return;
     clearTimeout(p.timer);
+    p.unlisten?.();
     pending.delete(id);
     fn(p);
   }
@@ -509,7 +646,7 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
     // `e.source === iframe.contentWindow` check.
     if (typeof window !== 'undefined' && e.source !== window.parent) return;
     const data: unknown = e.data;
-    const isOurs = isBridgeReply(data) || isEnvProfileApplied(data) || isZenStateChanged(data) || isDockAction(data) || isDockPreviewRequest(data);
+    const isOurs = isBridgeReply(data) || isEnvProfileApplied(data) || isZenStateChanged(data) || isDockAction(data) || isDockPreviewRequest(data) || isHostHello(data);
     if (!isOurs) return;
     // Origin pinning — the load-bearing check. If we already know the host
     // origin, drop anything from elsewhere; otherwise adopt this (parent-sourced,
@@ -519,7 +656,11 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
     } else if (e.origin !== hostOrigin) {
       return;
     }
-    if (isDockPreviewRequest(data)) {
+    if (isHostHello(data)) {
+      // The host's post-reload handshake: answering proves this document is
+      // still on the origin the host launched (card C10).
+      post({ __tileapp: true, kind: 'host-hello-ack', nonce: data.nonce });
+    } else if (isDockPreviewRequest(data)) {
       post({ __tileapp: true, kind: 'title-bar-status', id: newId(), text: titleBarStatus });
       post({ __tileapp: true, kind: 'dock-preview', id: newId(), preview: dockPreview });
     } else if (isDockAction(data)) {
@@ -539,22 +680,26 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
   function post(env: OutboundEnvelope): void {
     const parent = typeof window !== 'undefined' ? window.parent : undefined;
     if (!parent || parent === window) {
-      throw new Error('@yolo-labs/app-sdk: no host window — not running inside a YOLO tile');
+      throw new HostUnavailableError('@yolo-labs/app-sdk: no host window — not running inside a YOLO tile');
     }
     if (hostOrigin === null) {
+      // Not "no host": a host whose origin can't be pinned is a misconfiguration, so it throws.
       throw new Error('@yolo-labs/app-sdk: host origin unknown — cannot target a message safely (no document.referrer and no host message yet; pass { hostOrigin })');
     }
     // Pinned origin, never '*'.
     parent.postMessage(env, hostOrigin);
   }
 
-  function send(env: OutboundEnvelope, timeoutMs: number): Promise<BridgeReplyEnvelope> {
+  function send(env: OutboundRequestEnvelope, timeoutMs: number, signal?: AbortSignal): Promise<BridgeReplyEnvelope> {
     return new Promise<BridgeReplyEnvelope>((resolve, reject) => {
       if (destroyed) { reject(new Error('@yolo-labs/app-sdk: client destroyed')); return; }
+      if (signal?.aborted) { reject(new CancelledError(env.kind)); return; }
       const timer = setTimeout(() => {
         settle(env.id, (p) => p.reject(new TimeoutError(env.kind, timeoutMs)));
       }, timeoutMs);
-      pending.set(env.id, { resolve, reject, timer });
+      const onAbort = () => settle(env.id, (p) => p.reject(new CancelledError(env.kind)));
+      signal?.addEventListener('abort', onAbort, { once: true });
+      pending.set(env.id, { resolve, reject, timer, unlisten: signal ? () => signal.removeEventListener('abort', onAbort) : undefined });
       try {
         post(env);
       } catch (err) {
@@ -577,10 +722,18 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
     args?: unknown,
     opts?: TileAppCallOptions,
   ): Promise<TileAppCallResult> {
-    const reply = await send(
-      { __tileapp: true, kind: 'bridge-call', id: newId(), capability, method, args, protocolVersion: BRIDGE_PROTOCOL_VERSION },
-      opts?.timeoutMs ?? defaultTimeoutMs,
-    );
+    let reply: BridgeReplyEnvelope;
+    try {
+      reply = await send(
+        { __tileapp: true, kind: 'bridge-call', id: newId(), capability, method, args, protocolVersion: BRIDGE_PROTOCOL_VERSION },
+        opts?.timeoutMs ?? defaultTimeoutMs,
+        opts?.signal,
+      );
+    } catch (err) {
+      // No host window (not in a tile): a structured refusal, like any other.
+      if (err instanceof HostUnavailableError) return { ok: false, reason: 'unavailable', message: err.message };
+      throw err;
+    }
     // Normalize: a non-`true` ok (incl. a pre-broker error reply with no `ok`,
     // only `error`) is a failure. Surface the host's error text as `message`.
     return {
@@ -588,6 +741,12 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
       payload: reply.payload,
       reason: reply.reason,
       message: reply.message ?? (typeof reply.error === 'string' ? reply.error : undefined),
+      status: typeof reply.status === 'number' && Number.isInteger(reply.status) && reply.status >= 100 && reply.status <= 599 ? reply.status : undefined,
+      code: reply.code === null || typeof reply.code === 'string' ? reply.code : undefined,
+      retryAfter: reply.retryAfter === null ? null
+        : typeof reply.retryAfter === 'number' && Number.isFinite(reply.retryAfter) && reply.retryAfter >= 0 ? reply.retryAfter
+        : typeof reply.retryAfterSeconds === 'number' && Number.isFinite(reply.retryAfterSeconds) && reply.retryAfterSeconds >= 0 ? reply.retryAfterSeconds : undefined,
+      permission: typeof reply.permission === 'string' ? reply.permission : undefined,
     };
   }
 
@@ -635,8 +794,25 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
       return (await callCapability('llm', 'discover', args ?? {}, opts)) as TileAppCallResult<LlmDiscoverPayload>;
     },
 
+    async mcpCall<TPayload = unknown>(args: McpCallArgs, opts?: TileAppCallOptions) {
+      const timeoutMs = typeof opts?.timeoutMs === 'number' && Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0
+        ? Math.min(opts.timeoutMs, 35_000) : 35_000;
+      return (await callCapability('mcp', 'call', args, { ...opts, timeoutMs })) as TileAppCallResult<TPayload>;
+    },
+
     async sendNotification(args, opts) {
       return (await callCapability('notifications', 'send', args, opts)) as TileAppCallResult<SendNotificationPayload>;
+    },
+
+    async capabilities(opts) {
+      const res = (await callCapability('capabilities', 'get', {}, opts)) as TileAppCallResult<TileAppCapabilities>;
+      if (res.ok && res.payload) return res.payload;
+      if (res.reason === 'unknown-capability' || res.reason === 'unknown-method') return null;
+      throw new Error(`@yolo-labs/app-sdk: capabilities.get failed: ${res.message ?? res.reason ?? 'unknown'}`);
+    },
+
+    async openLink(url, opts) {
+      return (await callCapability('link', 'open', { url }, opts)) as TileAppCallResult<{ opened: true; host: string }>;
     },
 
     async getContext(opts) {
@@ -698,6 +874,7 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
       window.removeEventListener('message', onMessage);
       for (const p of pending.values()) {
         clearTimeout(p.timer);
+        p.unlisten?.();
         p.reject(new Error('@yolo-labs/app-sdk: client destroyed'));
       }
       pending.clear();
@@ -708,12 +885,36 @@ export function createTileApp(options: CreateTileAppOptions = {}): TileApp {
   };
 }
 
-class TimeoutError extends Error {
+/** A call that got no answer within its timeout. */
+export class TimeoutError extends Error {
   constructor(kind: string, timeoutMs: number) {
     super(`@yolo-labs/app-sdk: ${kind} timed out after ${timeoutMs}ms`);
     this.name = 'TimeoutError';
   }
 }
+
+/** Thrown by the bridge when there is no host window (not in a tile); capability calls turn it into `reason: 'unavailable'`. */
+export class HostUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HostUnavailableError';
+  }
+}
+
+/** A call cancelled through its `signal`. */
+export class CancelledError extends Error {
+  constructor(kind: string) {
+    super(`@yolo-labs/app-sdk: ${kind} was cancelled`);
+    this.name = 'CancelledError';
+  }
+}
+
+/**
+ * The calls an app makes the same way from its UI ({@link createTileApp}) and its
+ * server (`createTileServerClient` in `./server.js`): one contract, so code
+ * written against it runs on either side. Feature-detect with `capabilities()`.
+ */
+export type TileCaller = Pick<TileApp, 'call' | 'llmInvoke' | 'llmDiscover' | 'mcpCall' | 'sendNotification' | 'capabilities'>;
 
 function originFromReferrer(): string | null {
   try {

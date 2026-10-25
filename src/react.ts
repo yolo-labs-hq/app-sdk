@@ -10,9 +10,8 @@
  * Browser-only: each hook ultimately calls `createTileApp`, which registers a
  * `window` message listener — these are client-side hooks, not for SSR.
  *
- * No brokered-credentials hook ships here yet: `useBrokeredFetch` waits on the
- * P2 `brokeredFetch` client, which is gated on the
- * brokered-credentials backend.
+ * There is no credentials hook: a granted secret is attached to your server's
+ * vendor requests by the platform, and never reaches the browser.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createTileApp } from './client.js';

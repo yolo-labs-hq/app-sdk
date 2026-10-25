@@ -29,9 +29,12 @@
 
     // One capability call. The host attaches your user token server-side and
     // forwards to the Capability Broker; you only ever see the broker's reply.
-    const res = await app.call('media', 'upload', { name: 'clip.mp4' }, { timeoutMs: 30_000 });
+    // (Needs `notifications.send:workspace` in the manifest.)
+    const res = await app.call('notifications', 'send', {
+      destination: 'workspace', title: 'Hello', message: 'from the minimal app', eventId: 'hello-1',
+    }, { timeoutMs: 30_000 });
     document.getElementById('status').textContent =
-      res.ok ? 'Upload OK' : `Refused: ${res.reason} — ${res.message}`;
+      res.ok ? 'Notified' : `Refused: ${res.reason} — ${res.message}`;
 
     // Subscribe to a host → app event. Returns an unsubscribe fn (unused here).
     app.on('env-profile-applied', (e) => {

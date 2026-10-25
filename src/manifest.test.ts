@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateManifest, KNOWN_PERMISSIONS, net, parsePermission } from './manifest.js';
+import { validateManifest, KNOWN_PERMISSIONS, linkPatternError, net, parsePermission } from './manifest.js';
 
 /** The videostitcher manifest shape — a known-good, complete manifest. */
 function validManifest(): Record<string, unknown> {
@@ -128,12 +128,16 @@ describe('validateManifest', () => {
     expect(res.ok).toBe(true);
   });
 
-  it('rejects raw secret permissions (first-party only; third parties use brokered creds)', () => {
+  // P2.4: the server accepts secret:<preset> from any publisher and delivers it without exposing
+  // the key (P1.8); the SDK checks only the key's shape.
+  it('accepts a secret permission naming an UPPER_SNAKE_CASE key, and refuses another shape', () => {
     const m = validManifest();
-    m.permissions = { required: [], optional: ['secret:SOME_KEY'] };
+    m.permissions = { required: [], optional: ['secret:OPENAI_API_KEY'] };
+    expect(validateManifest(m).ok).toBe(true);
+    m.permissions = { required: [], optional: ['secret:openai-key'] };
     const res = validateManifest(m);
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.errors.some((e) => e.includes('secret permissions are not available to third-party apps'))).toBe(true);
+    if (!res.ok) expect(res.errors.some((e) => e.includes('UPPER_SNAKE_CASE'))).toBe(true);
   });
 
   it('rejects internal mcp:work.* permissions (never app-grantable)', () => {
@@ -244,5 +248,89 @@ describe('notification permissions', () => {
     expect(parsePermission('notifications.send:workspace')).toMatchObject({ namespace: 'notifications', action: 'send', arg: 'workspace' });
     for (const value of ['notifications.send', 'notifications.send:both', 'notifications.send:*', 'notifications.send.extra:global']) expect(parsePermission(value)).toBeNull();
     expect(validateManifest({ ...validManifest(), permissions: { required: [], optional: ['notifications.send:global', 'notifications.send:workspace'] } }).ok).toBe(true);
+  });
+});
+
+describe('validateManifest — links (card C7)', () => {
+  it('accepts https host + path-prefix patterns', () => {
+    const res = validateManifest({ ...validManifest(), links: { open: ['https://github.com/*', 'https://gitlab.com/org/*', 'https://docs.example.com/page'] } });
+    expect(res.ok).toBe(true);
+  });
+  it.each([
+    ['https://*.github.com/*', /no wildcards/],
+    ['javascript:alert(1)', /https:\/\//],
+    ['data:text/html,x', /https:\/\//],
+    ['http://github.com/*', /https:\/\//],
+    ['https://github.com:444/*', /no port/],
+    ['https://github.com', /needs a path/],
+    ['https://github.com/*/x', /only at the end/],
+    ['https://github.com/a/../*', /normal form/],
+  ])('rejects %s', (pattern, error) => {
+    const res = validateManifest({ ...validManifest(), links: { open: [pattern] } });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.errors.join('\n')).toMatch(error);
+    expect(linkPatternError(pattern)).toMatch(error);
+  });
+  it('rejects a malformed links block', () => {
+    expect(validateManifest({ ...validManifest(), links: ['https://github.com/*'] })).toEqual({ ok: false, errors: ['links must be an object when present'] });
+    // P2.1: only links.open; a frame or an OAuth sign-in is refused, not ignored.
+    const frame = validateManifest({ ...validManifest(), links: { open: ['https://github.com/*'], frame: ['https://maps.example.com/*'] } });
+    expect(frame.ok).toBe(false);
+    expect(frame.ok ? [] : frame.errors).toEqual([expect.stringMatching(/^links\.frame isn't supported/)]);
+    expect(validateManifest({ ...validManifest(), links: { open: 'https://github.com/*' } })).toEqual({ ok: false, errors: ['links.open must be an array of strings when present'] });
+  });
+});
+
+// Card PM-b: the manifest picks ui / worker / container; the SDK pre-check
+// accepts what the server accepts for each.
+describe('validateManifest — placements', () => {
+  const base = () => { const m = validManifest(); delete m.image; delete m.runtime; return m; };
+
+  it('worker: runtime.kind worker with neither image nor exec', () => {
+    expect(validateManifest({ ...base(), runtime: { kind: 'worker', port: 8080 } }).ok).toBe(true);
+  });
+
+  it('worker: an image or exec would be ignored, so it is an error', () => {
+    const withImage = validateManifest({ ...base(), runtime: { kind: 'worker', port: 8080 }, image: { ref: 'r', tag: 't' } });
+    expect(withImage.ok).toBe(false);
+    const withExec = validateManifest({ ...base(), runtime: { kind: 'worker', port: 8080, exec: 'node s.js' } });
+    expect(withExec.ok).toBe(false);
+  });
+
+  it('container: an image with dedicated or edge isolation and an instance type', () => {
+    for (const isolation of ['dedicated', 'edge']) {
+      expect(validateManifest({ ...base(), runtime: { port: 8080 }, image: { ref: 'r', tag: 't' }, isolation, resources: { instanceType: 'standard-1' } }).ok, isolation).toBe(true);
+    }
+  });
+
+  it('refuses unknown runtime kinds and isolation values', () => {
+    expect(validateManifest({ ...base(), runtime: { kind: 'lambda', port: 8080 }, image: { ref: 'r', tag: 't' } }).ok).toBe(false);
+    expect(validateManifest({ ...base(), isolation: 'vm' }).ok).toBe(false);
+  });
+});
+
+// Parity with the server, whose worker rules apply only with `worker` in TILEAPP_CF_PLACEMENTS.
+describe('validateManifest — worker placement off on the target server', () => {
+  const base = () => { const m = validManifest(); delete m.image; delete m.runtime; return m; };
+  it('a worker runtime then needs an image or exec, and may carry one', () => {
+    expect(validateManifest({ ...base(), runtime: { kind: 'worker', port: 8080 } }, { workerPlacement: false }).ok).toBe(false);
+    expect(validateManifest({ ...base(), runtime: { kind: 'worker', port: 8080 }, image: { ref: 'r', tag: 't' } }, { workerPlacement: false }).ok).toBe(true);
+  });
+});
+
+// P1.2: against the cutover profile the pre-check refuses what the server's publish refuses.
+describe('validateManifest — cutover profile options', () => {
+  const ui = (perms: string[]) => { const m = validManifest(); delete m.image; delete m.runtime; m.permissions = { required: perms }; return m; };
+  const CUTOVER = { consentV2: true, fsRetired: true, staticPlacement: true };
+  it('consent v2 refuses media.*, device.* and net: without a runtime', () => {
+    for (const p of ['media.upload:video', 'device.clipboard:read', 'net:api.example.com']) {
+      expect(validateManifest(ui([p]), { consentV2: true }).ok, p).toBe(false);
+      expect(validateManifest(ui([p])).ok, `${p} by default`).toBe(true);
+    }
+  });
+  it('fs retirement refuses every fs.*; without it, a pure-UI non-workspace fs.* is inert where static is on', () => {
+    expect(validateManifest(ui(['fs.read:workspace']), CUTOVER).ok).toBe(false);
+    expect(validateManifest(ui(['fs.readwrite:app-data']), { consentV2: true, staticPlacement: true }).ok).toBe(false);
+    expect(validateManifest(ui(['fs.read:workspace']), { consentV2: true, staticPlacement: true }).ok).toBe(true);
   });
 });
