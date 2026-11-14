@@ -290,6 +290,13 @@ describe('validateManifest — placements', () => {
     expect(validateManifest({ ...base(), runtime: { kind: 'worker', port: 8080 } }).ok).toBe(true);
   });
 
+  it('worker: needs no port (a Worker listens on none); a process still does', () => {
+    const errors = (r: ReturnType<typeof validateManifest>) => (r.ok ? [] : r.errors);
+    expect(validateManifest({ ...base(), runtime: { kind: 'worker' } }).ok).toBe(true);
+    expect(errors(validateManifest({ ...base(), runtime: { kind: 'worker' } }, { workerPlacement: false }))).toContain('runtime.port must be a positive number');
+    expect(errors(validateManifest({ ...base(), runtime: {}, image: { ref: 'r', tag: 't' } }))).toContain('runtime.port must be a positive number');
+  });
+
   it('worker: an image or exec would be ignored, so it is an error', () => {
     const withImage = validateManifest({ ...base(), runtime: { kind: 'worker', port: 8080 }, image: { ref: 'r', tag: 't' } });
     expect(withImage.ok).toBe(false);

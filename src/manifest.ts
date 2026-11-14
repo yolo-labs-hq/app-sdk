@@ -90,8 +90,8 @@ export interface TileAppRuntime {
    * `worker` placement). See {@link TileAppPlacement}.
    */
   kind?: 'process' | 'worker';
-  /** Port the app process listens on; proxied to the iframe surface. */
-  port: number;
+  /** Port the app process listens on; proxied to the iframe surface. Required for a process; a worker has none (ignored if given). */
+  port?: number;
   /** Substring/regex matched against process stdout to detect ready. */
   readyPattern?: string;
   /** Disk quota for the app's working dir, e.g. '2Gi'. */
@@ -406,7 +406,8 @@ export function validateManifest(
     if (!isObj(rt)) {
       errors.push('runtime must be an object when present');
     } else {
-      if (typeof rt.port !== 'number' || rt.port <= 0) errors.push('runtime.port must be a positive number');
+      // A worker (edge backend, worker placement on) has no port: optional there, ignored if given.
+      if (!(workerPlacement && rt.kind === 'worker') && (typeof rt.port !== 'number' || rt.port <= 0)) errors.push('runtime.port must be a positive number');
       if (rt.exec !== undefined && !isStr(rt.exec)) errors.push('runtime.exec must be a non-empty string when present');
       if (rt.kind !== undefined && rt.kind !== 'process' && rt.kind !== 'worker') errors.push("runtime.kind must be 'process' | 'worker' when present");
     }
