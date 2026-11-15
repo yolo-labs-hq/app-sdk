@@ -19,4 +19,5 @@ export * from './mcp-provider.js';
 export * from './server.js';
 export * from './storage.js';
 export * from './manifest.js';
+export * from './portal.js';
 export * from './mcp.js';

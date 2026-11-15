@@ -704,6 +704,70 @@ service through OAuth isn't available to apps yet either; it will be run by the
 host (new tab, Studio callback, token kept server-side), never by redirecting
 your frame. Until then, use a declared `secret:` key or an MCP provider.
 
+### In a customer portal: theme and height
+
+When a Mogul shows your app in a customer's portal, it gets its own tab, named
+by the title the Mogul gave it, and the full width of the portal's content
+column (about 1150 px on a desktop, the whole screen width on a phone). Lay out
+to fill that width. A fixed column of 500 px centred in it leaves empty space on
+both sides.
+
+The portal can pass you its theme and size your frame to your content. Both are
+optional: an app that ignores them still works, with the default frame height
+and its own scrollbar.
+
+```ts
+import { connectPortalFrame } from '@yolo-labs/app-sdk';
+
+connectPortalFrame({
+  onTheme: (t) => console.log(t.scheme, t.accent), // optional
+});
+```
+
+```css
+body {
+  background: var(--yolo-background, #fff);
+  color: var(--yolo-ink, #111);
+  font-family: var(--yolo-font, system-ui, sans-serif);
+}
+button.primary { background: var(--yolo-accent, #2563eb); color: var(--yolo-accent-ink, #fff); border-radius: var(--yolo-radius, 8px); }
+.card { background: var(--yolo-surface, #fff); border: 1px solid var(--yolo-line, #e5e7eb); }
+```
+
+**Theme.** The portal posts `{ __yoloPortalApp: 1, type: 'yolo:theme', nonce, theme }`
+to your origin on load, when you ask with `yolo:ready`, and every time the
+customer changes theme (five themes plus Auto light/dark) or the provider's
+accent applies. `theme` contains design tokens only, never customer data. Any
+field the portal couldn't read cleanly is left out:
+
+| Token | CSS variable | Meaning |
+|---|---|---|
+| `scheme` | `color-scheme`, `data-yolo-scheme` | `light` or `dark` (always present) |
+| `name` | `data-yolo-theme` | `ink`, `porcelain`, `dusk`, `meadow` or `phosphor` |
+| `background` | `--yolo-background` | page background |
+| `surface` | `--yolo-surface` | cards and panels |
+| `ink` / `inkSoft` | `--yolo-ink` / `--yolo-ink-soft` | body and secondary text |
+| `line` | `--yolo-line` | borders and hairlines |
+| `accent` / `accentInk` | `--yolo-accent` / `--yolo-accent-ink` | the provider's brand colour (or the theme's), and text drawn on it |
+| `radius` | `--yolo-radius` | corner radius, in px |
+| `font` | `--yolo-font` | a font-family stack |
+
+`connectPortalFrame` sets the variables on `<html>`. Always give a fallback
+(`var(--yolo-accent, #2563eb)`), because outside a portal nothing is set.
+
+**Height.** `connectPortalFrame` watches `document.body` and posts
+`{ __yoloPortalApp: 1, type: 'yolo:resize', nonce, height }` whenever it
+changes. The portal accepts it only from your frame and origin, carrying the
+nonce from the last theme message, and clamps it to 160–4000 px. Measure your
+content, not the viewport: don't set `height: 100vh` on `html` or `body`, or the
+frame can only grow. Call `reportHeight()` after a change the observer can't
+see. Pass `autoResize: false` or `applyCssVariables: false` to opt out of either
+half.
+
+Without the SDK, it's about 15 lines: listen for `yolo:theme` from
+`window.parent`, keep its `nonce` and `event.origin`, and post `yolo:resize`
+back to that origin.
+
 ## Source & contributing
 
 [github.com/yolo-labs-hq/app-sdk](https://github.com/yolo-labs-hq/app-sdk) is a public mirror of `packages/app-sdk` in YOLO Labs' private monorepo, which stays the source of truth. The mirror is synced automatically on every change. Issues are welcome. Pull requests are welcome too: we apply them in the monorepo, keeping you as the author, and the change then syncs back here.
